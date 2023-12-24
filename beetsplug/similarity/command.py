@@ -8,6 +8,12 @@ from beets.library import Library
 from beets.ui import Subcommand, decargs
 from confuse import Subview
 
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.models import PointStruct
+from urllib.parse import urlparse
+
 from beetsplug.similarity import common
 
 
@@ -33,7 +39,7 @@ class SimilarityCommand(Subcommand):
 
         self.parser.add_option(
             '-i', '--import',
-            action='store_true', dest='import', default=False,
+            action='store_true', dest='import_xtractor', default=False,
             help=u'(re)import dataset into qdrant'
         )
 
@@ -65,17 +71,69 @@ class SimilarityCommand(Subcommand):
             self.show_version_information()
             return
         
-        self.handle_main_task()
+        qdrant_url = self.config["qdrant_url"]
+        q_url=urlparse(str(qdrant_url)).netloc.split(":")
 
-    def handle_main_task(self):
+        self.client = QdrantClient(q_url[0], port=int(q_url[1]))
+        try:
+            self.client.get_collection(str(self.config["qdrant_collection"]))
+        except UnexpectedResponse:
+            self.client.create_collection(
+                collection_name=str(self.config["qdrant_collection"]),
+                vectors_config=models.VectorParams(size=100, distance=models.Distance.DOT),
+            )
+        self.handle_main_task(options)
+
+    def handle_main_task(self,options):
         self._say("Your journey starts here...", log_only=False)
+        if options.import_xtractor:
+            self.client.recreate_collection(
+                collection_name=str(self.config["qdrant_collection"]),
+                vectors_config=models.VectorParams(size=7, distance=models.Distance.DOT),                
+            )
+            items = self.lib.items()
+            id=0
+            pt_structs = []
+            for item in items:
+                try:
+                    vec_array=[]
+                    for vector in self.config['vectors']:
+                        vec_array.append(item.get(str(vector)))
+                    
+                    vec_values=[float(x) for x in vec_array]
+                    #print(f"{item['mb_trackid']} - {item['title']}")
+                    #print(vec_values)
+                except (TypeError, KeyError):
+                    continue
+                if len(vec_values) == 7:
+                    pt_structs.append(PointStruct( id=id, vector=vec_values,payload={"mb_trackid": item['mb_trackid'],"mb_artistid": item['mb_artistid']}))
+
+                    id +=1 
+
+            self.client.upsert(
+                collection_name=str(self.config["qdrant_collection"]),
+                points=pt_structs
+            )
+            
+            return
+                
 
         items = self.lib.items(self.query)
         for item in items:
             print(f"{item['mb_trackid']} - {item['title']}")
             try:
+                vec_array=[]
                 for vector in self.config['vectors']:
-                    self._say(f"{vector} - {item.get(str(vector))}", log_only=False)
+                    vec_array.append(item.get(str(vector)))
+                
+                vec_values=[float(x) for x in vec_array]
+                search_result = self.client.search(
+                    collection_name=str(self.config["qdrant_collection"]),
+                    query_vector=vec_values,
+                    limit=1
+                )
+                sim_items = self.lib.items(f'mb_trackid:{search_result[0].payload["mbid"]}')
+                print(f"{sim_items[0]['mb_trackid']} - {sim_items[0]['title']}")
             except KeyError:
                 self._say("xtractor based field not found, please process the beet xtractor plugin", is_error=True)
 
