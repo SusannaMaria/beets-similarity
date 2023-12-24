@@ -31,6 +31,24 @@ class SimilarityCommand(Subcommand):
             help=u'show plugin version'
         )
 
+        self.parser.add_option(
+            '-i', '--import',
+            action='store_true', dest='import', default=False,
+            help=u'(re)import dataset into qdrant'
+        )
+
+        self.parser.add_option(
+            u'-u', u'--url', dest='qdrant_url',
+            action='store', default='http://127.0.0.1:6333',
+            help=u'qdrant url to store music features generated from xtractor'
+        )
+
+        self.parser.add_option(
+            u'-c', u'--collection', dest='qdrant_collection',
+            action='store', default='beets_similarity',
+            help=u'qdrant collection to store vectors'
+        )
+
         super(SimilarityCommand, self).__init__(
             parser=self.parser,
             name=common.plg_ns['__PLUGIN_NAME__'],
@@ -46,11 +64,21 @@ class SimilarityCommand(Subcommand):
         if options.version:
             self.show_version_information()
             return
-
+        
         self.handle_main_task()
 
     def handle_main_task(self):
         self._say("Your journey starts here...", log_only=False)
+
+        items = self.lib.items(self.query)
+        for item in items:
+            print(f"{item['mb_trackid']} - {item['title']}")
+            try:
+                for vector in self.config['vectors']:
+                    self._say(f"{vector} - {item.get(str(vector))}", log_only=False)
+            except KeyError:
+                self._say("xtractor based field not found, please process the beet xtractor plugin", is_error=True)
+
 
     def show_version_information(self):
         self._say("{pt}({pn}) plugin for Beets: v{ver}".format(
