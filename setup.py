@@ -14,7 +14,7 @@ README = (HERE / "README.md").read_text()
 
 # Get values from the about file
 plg_ns = {}
-about_path = convert_path('beetsplug/template/about.py')
+about_path = convert_path('beetsplug/similarity/about.py')
 with open(about_path) as about_file:
     exec(about_file.read(), plg_ns)
 
@@ -31,27 +31,18 @@ setup(
     platforms='ALL',
 
     include_package_data=True,
-    test_suite='test',
-    packages=['beetsplug.template'],
+    packages=['beetsplug.similarity'],
 
     python_requires='>=3.6',
 
     install_requires=[
-        'beets>=1.4.9',
+        'beets>=1.6.0', 'confuse'
     ],
-
-    tests_require=[
-        'pytest', 'nose', 'coverage',
-        'mock', 'six', 'yaml',
-    ],
-
     classifiers=[
         'Topic :: Multimedia :: Sound/Audio',
         'License :: OSI Approved :: MIT License',
         'Environment :: Console',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.10',
     ],
 )

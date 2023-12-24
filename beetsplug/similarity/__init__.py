@@ -5,19 +5,19 @@
 import os
 
 from beets.plugins import BeetsPlugin
-from beets.util.confit import ConfigSource, load_yaml
+from confuse import ConfigSource, load_yaml
 
-from beetsplug.template.command import TemplateCommand
+from beetsplug.similarity.command import SimilarityCommand
 
 
-class TemplatePlugin(BeetsPlugin):
+class SimilarityPlugin(BeetsPlugin):
     _default_plugin_config_file_name_ = 'config_default.yml'
 
     def __init__(self):
-        super(TemplatePlugin, self).__init__()
+        super(SimilarityPlugin, self).__init__()
         config_file_path = os.path.join(os.path.dirname(__file__), self._default_plugin_config_file_name_)
         source = ConfigSource(load_yaml(config_file_path) or {}, config_file_path)
         self.config.add(source)
 
     def commands(self):
-        return [TemplateCommand(self.config)]
+        return [SimilarityCommand(self.config)]
