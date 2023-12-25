@@ -55,6 +55,19 @@ class SimilarityCommand(Subcommand):
             help=u'qdrant collection to store vectors'
         )
 
+        self.parser.add_option(
+            u'-r', u'--results', dest='results',
+            action='store', default='10',
+            help=u'Limit the results'
+        )
+
+        self.parser.add_option(
+            u'-m', u'--m3u', dest='m3u',
+            action='store', default=None,
+            help=u'create M3U'
+        )
+
+
         super(SimilarityCommand, self).__init__(
             parser=self.parser,
             name=common.plg_ns['__PLUGIN_NAME__'],
@@ -78,18 +91,16 @@ class SimilarityCommand(Subcommand):
         try:
             self.client.get_collection(str(self.config["qdrant_collection"]))
         except UnexpectedResponse:
-            self.client.create_collection(
-                collection_name=str(self.config["qdrant_collection"]),
-                vectors_config=models.VectorParams(size=100, distance=models.Distance.DOT),
-            )
+            options.import_xtractor=True
         self.handle_main_task(options)
 
     def handle_main_task(self,options):
         self._say("Your journey starts here...", log_only=False)
         if options.import_xtractor:
+            vec_length=len([str(x) for x in self.config['vectors']])
             self.client.recreate_collection(
                 collection_name=str(self.config["qdrant_collection"]),
-                vectors_config=models.VectorParams(size=7, distance=models.Distance.DOT),                
+                vectors_config=models.VectorParams(size=vec_length, distance=models.Distance.COSINE),                
             )
             items = self.lib.items()
             id=0
@@ -101,14 +112,14 @@ class SimilarityCommand(Subcommand):
                         vec_array.append(item.get(str(vector)))
                     
                     vec_values=[float(x) for x in vec_array]
-                    #print(f"{item['mb_trackid']} - {item['title']}")
-                    #print(vec_values)
+
                 except (TypeError, KeyError):
                     continue
-                if len(vec_values) == 7:
-                    pt_structs.append(PointStruct( id=id, vector=vec_values,payload={"mb_trackid": item['mb_trackid'],"mb_artistid": item['mb_artistid']}))
+                if len(vec_values) == vec_length:
+                    pt_structs.append(PointStruct( id=id, vector=vec_values,payload={"mb_trackid": item['mb_trackid'],"mb_artistid": item['mb_artistid'],"albumartist": item['albumartist'],"album": item['album'],"title": item['title']}))
 
                     id +=1 
+                    print( item['mb_trackid'])
 
             self.client.upsert(
                 collection_name=str(self.config["qdrant_collection"]),
@@ -119,8 +130,11 @@ class SimilarityCommand(Subcommand):
                 
 
         items = self.lib.items(self.query)
+        if options.m3u:
+            m3u_writer=open(options.m3u, 'w')
+
         for item in items:
-            print(f"{item['mb_trackid']} - {item['title']}")
+            print(f"{item['mb_trackid']} - {item['title']} - {item['mb_artistid']}")
             try:
                 vec_array=[]
                 for vector in self.config['vectors']:
@@ -130,13 +144,31 @@ class SimilarityCommand(Subcommand):
                 search_result = self.client.search(
                     collection_name=str(self.config["qdrant_collection"]),
                     query_vector=vec_values,
-                    limit=1
+                    limit=100,
+                    query_filter=models.Filter(must_not=[models.FieldCondition(key="mb_artistid", match=models.MatchValue(value=str(item['mb_artistid'])))])
                 )
-                sim_items = self.lib.items(f'mb_trackid:{search_result[0].payload["mbid"]}')
-                print(f"{sim_items[0]['mb_trackid']} - {sim_items[0]['title']}")
-            except KeyError:
-                self._say("xtractor based field not found, please process the beet xtractor plugin", is_error=True)
+                if options.m3u:
+                    m3u_writer.write(item['path'].decode("utf-8")+"\n")
 
+                mb_artistid_arr = []
+                soft_limit=1
+                for search_item in search_result:
+                    sim_items = self.lib.items(f'mb_trackid:{search_item.payload["mb_trackid"]}')
+                    for it in sim_items:
+                        if not it['mb_artistid'] in mb_artistid_arr:
+                            
+                            mb_artistid_arr.append(it['mb_artistid'])
+                            if options.m3u:
+                                m3u_writer.write(it['path'].decode("utf-8")+"\n")
+                            print(f"{it['albumartist']} - {it['album']} - {it['title']}")
+                            if soft_limit>int(options.results):
+                                break
+                            soft_limit+=1
+                    if soft_limit>int(options.results):
+                        break
+            except KeyError as err:
+                self._say(f"Keyerror {err}", is_error=True)
+            m3u_writer.close()
 
     def show_version_information(self):
         self._say("{pt}({pn}) plugin for Beets: v{ver}".format(
