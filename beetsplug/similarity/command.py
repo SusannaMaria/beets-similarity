@@ -168,7 +168,7 @@ class SimilarityCommand(Subcommand):
                         break
             except KeyError as err:
                 self._say(f"Keyerror {err}", is_error=True)
-            m3u_writer.close()
+        m3u_writer.close()
 
     def show_version_information(self):
         self._say("{pt}({pn}) plugin for Beets: v{ver}".format(
